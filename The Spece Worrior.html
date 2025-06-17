@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Space Coin Collector</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: Arial; }
+    canvas { display: block; margin: auto; background: #000; }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 16px;
+    }
+    #gameOverMenu, #shopMenu {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #111;
+      border: 2px solid #fff;
+      padding: 20px;
+      color: white;
+      text-align: center;
+      display: none;
+    }
+    .btn {
+      margin: 8px;
+      padding: 10px 16px;
+      background: crimson;
+      border: none;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .skinOption {
+      margin: 10px;
+      padding: 8px;
+      border: 1px solid white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="ui">
+  <div id="scoreDisplay">Score: 0</div>
+  <div id="coinDisplay">Coins: 0</div>
+  <div id="missionDisplay">Mission: Destroy 10 enemies</div>
+</div>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="gameOverMenu">
+  <h2>Game Over</h2>
+  <button class="btn" onclick="resetGame()">Play Again</button>
+  <button class="btn" onclick="openShop()">Open Skin Shop</button>
+</div>
+<div id="shopMenu">
+  <h3>Skin Shop</h3>
+  <div>
+    <div class="skinOption" onclick="buySkin('blue', 0)">Default Astronaut (Free)</div>
+    <div class="skinOption" onclick="buySkin('red', 10)">Red Astronaut – 10 Coins</div>
+    <div class="skinOption" onclick="buySkin('green', 20)">Green Astronaut – 20 Coins</div>
+    <div class="skinOption" onclick="buySkin('purple', 30)">Purple Astronaut – 30 Coins</div>
+    <div class="skinOption" onclick="buySkin('orange', 50)">Orange Astronaut – 50 Coins</div>
+  </div>
+  <button class="btn" onclick="closeShop()">Back to Menu</button>
+</div>
+<audio id="coinSound" src="https://freesound.org/data/previews/341/341695_626119-lq.mp3"></audio>
+<audio id="shootSound" src="https://freesound.org/data/previews/66/66717_931655-lq.mp3"></audio>
+<audio id="hitSound" src="https://freesound.org/data/previews/258/258142_4486188-lq.mp3"></audio>
+<audio id="deathSound" src="https://freesound.org/data/previews/342/342756_5121236-lq.mp3"></audio>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreDisplay = document.getElementById("scoreDisplay");
+const coinDisplay = document.getElementById("coinDisplay");
+const missionDisplay = document.getElementById("missionDisplay");
+const gameOverMenu = document.getElementById("gameOverMenu");
+const shopMenu = document.getElementById("shopMenu");
+const coinSound = document.getElementById("coinSound");
+const shootSound = document.getElementById("shootSound");
+const hitSound = document.getElementById("hitSound");
+const deathSound = document.getElementById("deathSound");
+
+let player, coins, enemies, bullets, stars, keysPressed, score, coinCount, skinColor, gameOver;
+let enemyDestroyed = 0;
+let difficultyLevel = 1;
+
+coinCount = parseInt(localStorage.getItem("coins") || "0");
+skinColor = localStorage.getItem("skin") || "blue";
+
+function resetGame() {
+  gameOver = false;
+  player = { x: 180, y: 530, width: 40, height: 60, speed: 4, animFrame: 0 };
+  coins = [];
+  enemies = [];
+  bullets = [];
+  stars = [];
+  keysPressed = {};
+  score = 0;
+  enemyDestroyed = 0;
+  difficultyLevel = 1;
+  gameOverMenu.style.display = "none";
+  shopMenu.style.display = "none";
+  spawnStars();
+  update();
+}
+
+function spawnStars() {
+  stars = [];
+  for (let i = 0; i < 100; i++) {
+    stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height });
+  }
+}
+
+function drawStars() {
+  ctx.fillStyle = "white";
+  stars.forEach(s => {
+    ctx.fillRect(s.x, s.y, 1.5, 1.5);
+    s.y += 0.5;
+    if (s.y > canvas.height) s.y = 0;
+  });
+}
+
+function drawAstronaut(p) {
+  const animOffset = Math.sin(p.animFrame / 10) * 3;
+  ctx.fillStyle = skinColor;
+  ctx.fillRect(p.x, p.y + 30 + animOffset, p.width, p.height - 30);
+  ctx.fillStyle = "#aaa";
+  ctx.fillRect(p.x + 5, p.y + animOffset, 30, 30);
+  ctx.fillStyle = "#00f";
+  ctx.beginPath();
+  ctx.arc(p.x + 20, p.y + 15 + animOffset, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "cyan";
+  ctx.beginPath();
+  ctx.arc(p.x + 14, p.y + 13 + animOffset, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(p.x + 26, p.y + 13 + animOffset, 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function updateUI() {
+  scoreDisplay.textContent = "Score: " + score;
+  coinDisplay.textContent = "Coins: " + coinCount;
+  missionDisplay.textContent = `Mission: Destroy 10 enemies (${enemyDestroyed}/10)`;
+}
+
+function fireBullet() {
+  if (bullets.length < 5) {
+    bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
+    shootSound.play();
+  }
+}
+
+function openShop() {
+  gameOverMenu.style.display = "none";
+  shopMenu.style.display = "block";
+}
+
+function closeShop() {
+  shopMenu.style.display = "none";
+  gameOverMenu.style.display = "block";
+}
+
+function buySkin(color, cost) {
+  if (coinCount >= cost) {
+    skinColor = color;
+    localStorage.setItem("skin", color);
+    if (cost > 0) coinCount -= cost;
+    localStorage.setItem("coins", coinCount);
+    updateUI();
+    alert("Skin selected: " + color);
+  } else {
+    alert("Not enough coins!");
+  }
+}
+
+document.addEventListener("keydown", e => keysPressed[e.key] = true);
+document.addEventListener("keyup", e => keysPressed[e.key] = false);
+
+// Game loop and elements
+setInterval(() => coins.push({ x: Math.random() * (canvas.width - 20), y: -20, size: 20, speed: 2 + Math.random(), anim: 0 }), 1500);
+setInterval(() => enemies.push({ x: Math.random() * (canvas.width - 30), y: -40, width: 30, height: 30, speed: 1 + difficultyLevel }), 2000);
+
+function update() {
+  if (gameOver) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawStars();
+  player.animFrame++;
+  drawAstronaut(player);
+  updateUI();
+  if (keysPressed["ArrowLeft"]) player.x -= player.speed;
+  if (keysPressed["ArrowRight"]) player.x += player.speed;
+  if (keysPressed[" "]) fireBullet();
+  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
+  coins.forEach((c, i) => {
+    c.y += c.speed;
+    ctx.fillStyle = "gold";
+    ctx.beginPath();
+    ctx.arc(c.x + c.size / 2, c.y + c.size / 2 + Math.sin(c.anim += 0.1) * 3, c.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "orange";
+    ctx.fillText("₿", c.x + 5, c.y + 15);
+    if (c.x < player.x + player.width && c.x + c.size > player.x && c.y < player.y + player.height && c.y + c.size > player.y) {
+      coinCount++;
+      coinSound.play();
+      coins.splice(i, 1);
+    } else if (c.y > canvas.height) coins.splice(i, 1);
+  });
+
+  enemies.forEach((e, i) => {
+    e.y += e.speed;
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(e.x, e.y, e.width, e.height);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(e.x + 15, e.y + 15, 4, 0, Math.PI * 2);
+    ctx.fill();
+    if (e.x < player.x + player.width && e.x + e.width > player.x && e.y < player.y + player.height && e.y + e.height > player.y) {
+      gameOver = true;
+      localStorage.setItem("coins", coinCount);
+      deathSound.play();
+      gameOverMenu.style.display = "block";
+      return;
+    }
+  });
+
+  bullets.forEach((b, i) => {
+    b.y -= 6;
+    ctx.fillStyle = "#0ff";
+    ctx.fillRect(b.x, b.y, 4, 10);
+    if (b.y < 0) bullets.splice(i, 1);
+    enemies.forEach((e, j) => {
+      if (b.x < e.x + e.width && b.x + 4 > e.x && b.y < e.y + e.height && b.y + 10 > e.y) {
+        enemies.splice(j, 1);
+        bullets.splice(i, 1);
+        enemyDestroyed++;
+        coinCount += 2;
+        hitSound.play();
+      }
+    });
+  });
+
+  score++;
+  if (score % 500 === 0) difficultyLevel += 0.2;
+  requestAnimationFrame(update);
+}
+
+resetGame();
+</script>
+</body>
+</html>
